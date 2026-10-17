@@ -487,7 +487,7 @@ function renderLedger() {
   const inGb = new Set(Object.keys(claim).map(Number));
   const list = shown.map(r => '<div class="lrow"><span class="no">#' + r.n + '</span><span class="nm">' + esc(r.name + (LROW[r.n][3] ? '(' + LROW[r.n][3] + ')' : '')) + '<small>' + (inGb.has(r.n) ? '<a class="gl" data-go="' + claim[r.n] + '">방명록 사진확인</a>' : '방명록 미작성') + '</small></span><span class="amt">' + man(r.a) + '</span>' +
     '<span class="gsel" data-n="' + r.n + '" style="display:flex;gap:4px">' + (r.g === '영범' ? '<span class="pill g-영범" style="padding:6px 8px;font-size:12px;min-width:128px;text-align:center;box-sizing:border-box">영범</span>' : '') + (r.g === '영범' ? [] : GUESTS).map(g => '<button class="pill ' + (r.g === g ? 'g-' + g : 'p-skip') + '" data-g="' + g + '" style="border:0;padding:6px 8px;font-size:12px;opacity:' + (r.g === g || !r.g ? 1 : .55) + '">' + g + '</button>').join('') + '</span></div>').join('');
-  $('#p1').innerHTML = '<div class="lhead"><div class="cards">' + cards + '</div><div class="lnote">이름이 이상하면 <b>방명록 사진확인</b>을 눌러 이름을 수정하세요.</div><div class="chips">' + chips + '</div></div>' + (list || '<div class="empty">해당하는 줄이 없어요</div>') + '';
+  $('#p1').innerHTML = '<div class="lhead"><div class="cards">' + cards + '</div><div class="lnote">이름 옆 <b>아빠·엄마·영우</b> 버튼을 눌러 하객을 분류하세요.<br>이름이 이상하면 <b>방명록 사진확인</b>을 눌러 이름을 수정하세요.</div><div class="chips">' + chips + '</div></div>' + (list || '<div class="empty">해당하는 줄이 없어요</div>') + '';
   $('#tot').textContent = man(shown.reduce((s, r) => s + r.a, 0)) + '원'; $('#totl').textContent = (flt === 'all' ? '전체' : flt === 'none' ? '미분류' : flt) + ' 합계';
 }
 $('#p1').addEventListener('click', async e => {
