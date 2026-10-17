@@ -160,6 +160,12 @@ html,body{touch-action:manipulation;-webkit-text-size-adjust:100%}
 .shr #cpb{background:var(--chip);color:var(--ink)}
 #shm{font-size:12px;color:var(--muted)}
 #cpTop{align-self:center;margin-left:10px;height:30px;border:0;border-radius:99px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px;padding:0 12px;white-space:nowrap}
+.row{-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+#am{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center}
+.amb{width:100%;max-width:520px;background:var(--surface);border-radius:20px 20px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px}
+.amt{font-size:18px;font-weight:700;text-align:center;margin-bottom:4px}
+.amb button{height:48px;border:0;border-radius:12px;font-size:16px;font-weight:700;background:var(--chip);color:var(--ink)}
+.amb .amd{background:#F8DADA;color:#A02828}
 </style></head><body>
 
 <div id="app">
@@ -285,7 +291,7 @@ function rowHTML(pi, ei) {
     ref = '장부 #' + e.l.map(x => x).join('·#') + ' ' + e.l.map(x => LROW[x][1]).join('·');
     amt = m.length ? '<span class="amt">' + man(m.reduce((a, x) => a + LROW[x][2], 0)) + '</span>' : '<span class="amt sub">같은 줄</span>';
   } else { ref = e.c.length ? '후보 장부 #' + e.c.join(' · #') : '장부에서 못 찾음'; amt = ''; }
-  return '<div class="rw"><button class="del" type="button">삭제</button><button class="row" data-p="' + pi + '" data-e="' + ei + '"><div class="nm"><div class="n1"><b>' + esc(n) + '</b>' +
+  return '<div class="rw"><button class="row" data-p="' + pi + '" data-e="' + ei + '"><div class="nm"><div class="n1"><b>' + esc(n) + '</b>' +
     (g ? '<span class="pill g-' + g + '">' + g + '</span>' : '') + (ov[eid(pi, ei)] ? '<span class="edited">수정됨</span>' : '') + '</div><div class="n2">' + esc(ref) + '</div></div>' +
     amt + '<span class="pill ' + st[1] + '">' + st[0] + '</span><span class="chev">›</span></button></div>';
 }
@@ -319,39 +325,26 @@ $('#prev').onclick = () => goto(cur - 1);
 $('#next').onclick = () => goto(cur + 1);
 $('#okb').onclick = () => { const was = !!dn[cur]; setDone(cur, !was); if (!was) goto(cur + 1); };
 $('#prog').onclick = e => { const b = e.target.closest('button'); if (b) goto(+b.dataset.i); };
-let openRw = null, swiped = false;
-const DELW = 84;
-function setRw(w, x, anim) { const r = w.querySelector('.row'); r.style.transition = anim ? 'transform .3s cubic-bezier(.22,1,.36,1)' : 'none'; r.style.transform = x ? 'translate3d(' + x + 'px,0,0)' : ''; }
-function closeRw() { if (openRw) { setRw(openRw, 0, true); openRw = null; } }
-$('#sc').addEventListener('click', e => {
-  const d = e.target.closest('.del'); if (d) { const r = d.parentElement.querySelector('.row'); doDelete(+r.dataset.p, +r.dataset.e); return; }
-  if (swiped) { swiped = false; return; }
-  const r = e.target.closest('.row'); if (!r) return;
-  if (openRw) { closeRw(); return; }
-  openSheet(+r.dataset.p, +r.dataset.e);
-});
+let openRw = null, swiped = false, lp = null;
+function closeRw() {}
+function closeAm() { const m = $('#am'); if (m) m.remove(); }
+function openAm(pi, ei) {
+  closeAm(); const d = document.createElement('div'); d.id = 'am';
+  d.innerHTML = '<div class="amb"><div class="amt">' + esc(nameOf(pi, ei)) + '</div><button class="ame">수정</button><button class="amd">삭제</button><button class="amc">취소</button></div>';
+  document.body.appendChild(d);
+  d.onclick = ev => { if (ev.target === d || ev.target.closest('.amc')) closeAm(); else if (ev.target.closest('.ame')) { closeAm(); openSheet(pi, ei); } else if (ev.target.closest('.amd')) { closeAm(); doDelete(pi, ei); } };
+}
+$('#sc').addEventListener('click', e => { if (swiped) { swiped = false; return; } const r = e.target.closest('.row'); if (r) openSheet(+r.dataset.p, +r.dataset.e); });
+$('#sc').addEventListener('contextmenu', e => { if (e.target.closest('.row')) e.preventDefault(); });
 {
-  let sw = null; const sc = $('#sc');
+  const sc = $('#sc');
   sc.addEventListener('pointerdown', e => {
-    const w = e.target.closest('.rw'); if (!w || e.target.closest('.del')) return;
-    if (openRw && openRw !== w) { closeRw(); swiped = true; setTimeout(() => { swiped = false; }, 400); }
-    sw = {w, x: e.clientX, y: e.clientY, base: openRw === w ? -DELW : 0, on: false, id: e.pointerId};
+    const r = e.target.closest('.row'); if (!r) return; clearTimeout(lp && lp.t);
+    lp = {x: e.clientX, y: e.clientY, id: e.pointerId, t: setTimeout(() => { if (!lp) return; const p = +r.dataset.p, q = +r.dataset.e; lp = null; swiped = true; setTimeout(() => { swiped = false; }, 700); if (navigator.vibrate) navigator.vibrate(15); openAm(p, q); }, 500)};
   });
-  sc.addEventListener('pointermove', e => {
-    if (!sw || e.pointerId !== sw.id) return; const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
-    if (!sw.on) {
-      if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy) * 1.1) { sw.on = true; try { sw.w.setPointerCapture(e.pointerId); } catch (_) {} }
-      else if (Math.abs(dy) > 10) { sw = null; return; } else return;
-    }
-    { const raw = sw.base + dx; setRw(sw.w, raw < -DELW ? -DELW + (raw + DELW) * 0.25 : Math.min(0, raw), false); }
-  });
-  const fin = e => {
-    if (!sw || e.pointerId !== sw.id) return;
-    if (sw.on) { const x = sw.base + (e.clientX - sw.x); swiped = true; setTimeout(() => { swiped = false; }, 400);
-      if (x < -DELW / 2) { setRw(sw.w, -DELW, true); openRw = sw.w; } else { setRw(sw.w, 0, true); if (openRw === sw.w) openRw = null; } }
-    sw = null;
-  };
-  sc.addEventListener('pointerup', fin); sc.addEventListener('pointercancel', fin);
+  sc.addEventListener('pointermove', e => { if (lp && e.pointerId === lp.id && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 8) { clearTimeout(lp.t); lp = null; } });
+  const cancel = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
+  sc.addEventListener('pointerup', cancel); sc.addEventListener('pointercancel', cancel); sc.addEventListener('scroll', cancel, true);
 }
 
 /* ---- 사진 확대/이동: 두 손가락, 두 번 탭, ＋－ 버튼, 휠 ---- */
