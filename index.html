@@ -152,6 +152,9 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
 .lg .gone{font-size:12px;color:var(--muted);padding-top:2px;flex:none}
 .rw .row{will-change:transform}
 html,body{touch-action:manipulation;-webkit-text-size-adjust:100%}
+.gl{color:var(--accent);text-decoration:underline;font-weight:700;cursor:pointer}
+.flash{animation:fl 2s ease-out}
+@keyframes fl{0%,55%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 3px transparent}}
 </style></head><body>
 
 <div id="app">
@@ -444,6 +447,11 @@ $('#scrim').onclick = closeSheet;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSheet();  } });
 
 /* ---- 장부 · 하객 탭 ---- */
+function goEntry(pi, ei) {
+  showTab(0); closeRw(); cur = pi; const sc = $('#sc'); sc.scrollLeft = pi * sc.clientWidth; drawProg(); drawFoot(); ensureImgs();
+  const row = document.querySelector('#pg' + pi + ' .row[data-e="' + ei + '"]');
+  if (row) { row.scrollIntoView({block: 'center'}); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+}
 function renderLedger() {
   const rows = D.L.map(r => ({n: r[0], name: r[1], a: r[2], g: gs['r' + r[0]] || ''}));
   const buckets = {'아빠': [0, 0], '엄마': [0, 0], '영우': [0, 0], '영범': [0, 0], '': [0, 0]};
@@ -454,12 +462,14 @@ function renderLedger() {
   const chips = fl.map(f => '<button data-f="' + f[0] + '" aria-pressed="' + (flt === f[0]) + '">' + f[1] + '</button>').join('');
   const shown = rows.filter(r => flt === 'all' || (flt === 'none' ? !r.g : r.g === flt));
   const inGb = new Set(Object.keys(claim).map(Number));
-  const list = shown.map(r => '<div class="lrow"><span class="no">#' + r.n + '</span><span class="nm">' + esc(r.name) + '<small>' + (inGb.has(r.n) ? '방명록 사진확인' : '방명록 미작성') + '</small></span><span class="amt">' + man(r.a) + '</span>' +
+  const list = shown.map(r => '<div class="lrow"><span class="no">#' + r.n + '</span><span class="nm">' + esc(r.name) + '<small>' + (inGb.has(r.n) ? '<a class="gl" data-go="' + claim[r.n] + '">방명록 사진확인 ›</a>' : '방명록 미작성') + '</small></span><span class="amt">' + man(r.a) + '</span>' +
     '<span class="gsel" data-n="' + r.n + '" style="display:flex;gap:4px">' + (r.g === '영범' ? '<span class="pill g-영범" style="padding:6px 8px;font-size:12px">영범</span>' : '') + GUESTS.map(g => '<button class="pill ' + (r.g === g ? 'g-' + g : 'p-skip') + '" data-g="' + g + '" style="border:0;padding:6px 8px;font-size:12px;opacity:' + (r.g === g || !r.g ? 1 : .55) + '">' + g + '</button>').join('') + '</span></div>').join('');
   $('#p1').innerHTML = '<div class="cards">' + cards + '</div><div class="chips">' + chips + '</div>' + (list || '<div class="empty">해당하는 줄이 없어요</div>') + '';
   $('#tot').textContent = man(shown.reduce((s, r) => s + r.a, 0)) + '원'; $('#totl').textContent = (flt === 'all' ? '전체' : flt === 'none' ? '미분류' : flt) + ' 합계';
 }
 $('#p1').addEventListener('click', e => {
+  const gl = e.target.closest('.gl');
+  if (gl) { e.preventDefault(); const m = /^p(\d+)e(\d+)$/.exec(gl.dataset.go); if (m) goEntry(+m[1] - 1, +m[2]); return; }
   const f = e.target.closest('[data-f]'); if (f) { flt = f.dataset.f; renderLedger(); return; }
   const b = e.target.closest('.gsel button'); if (b) setGuestKey('r' + b.parentElement.dataset.n, b.dataset.g);
 });
@@ -493,7 +503,7 @@ function showTab(t) {
 }
 [0, 1, 2].forEach(i => { $('#tab-' + i).onclick = () => showTab(i); });
 const sy = document.createElement('div'); sy.id = 'sync'; sy.className = 'sync'; sy.innerHTML = '<i></i><span>연결 중…</span>'; $('.top').appendChild(sy);
-buildPages(); renderAll();
+buildPages(); renderAll(); showTab(1);
 
 /* 구글 시트에서 현재 상태를 불러오고, 15초마다 다른 가족의 수정을 가져온다 */
 function pull(first) {
