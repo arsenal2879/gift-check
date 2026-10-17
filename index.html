@@ -155,6 +155,10 @@ html,body{touch-action:manipulation;-webkit-text-size-adjust:100%}
 .gl{color:var(--accent);text-decoration:underline;font-weight:700;cursor:pointer}
 .flash{animation:fl 2s ease-out}
 @keyframes fl{0%,55%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 3px transparent}}
+.shr{display:flex;gap:8px;align-items:center;flex:none;margin:2px 0 4px}
+.shr button{height:38px;border:0;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14px;padding:0 14px}
+.shr #cpb{background:var(--chip);color:var(--ink)}
+#shm{font-size:12px;color:var(--muted)}
 </style></head><body>
 
 <div id="app">
@@ -452,6 +456,16 @@ function goEntry(pi, ei) {
   const row = document.querySelector('#pg' + pi + ' .row[data-e="' + ei + '"]');
   if (row) { row.scrollIntoView({block: 'center'}); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
 }
+function shareText() {
+  const rows = D.L.map(r => ({n: r[0], name: r[1], a: r[2], m: r[3], g: gs['r' + r[0]] || ''})).filter(r => flt === 'all' || (flt === 'none' ? !r.g : r.g === flt));
+  const lab = flt === 'all' ? '전체' : flt === 'none' ? '미분류' : flt;
+  return '[축의금 ' + lab + ' 하객 ' + rows.length + '명 · 합계 ' + man(rows.reduce((s, r) => s + r.a, 0)) + '원]\n' + rows.map(r => r.name + ' ' + man(r.a) + (r.m ? ' (' + r.m + ')' : '')).join('\n');
+}
+function shareMsg(m) { const e = $('#shm'); if (e) { e.textContent = m; setTimeout(() => { if (e.textContent === m) e.textContent = ''; }, 2500); } }
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+  try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
+}
 function renderLedger() {
   const rows = D.L.map(r => ({n: r[0], name: r[1], a: r[2], g: gs['r' + r[0]] || ''}));
   const buckets = {'아빠': [0, 0], '엄마': [0, 0], '영우': [0, 0], '영범': [0, 0], '': [0, 0]};
@@ -464,10 +478,16 @@ function renderLedger() {
   const inGb = new Set(Object.keys(claim).map(Number));
   const list = shown.map(r => '<div class="lrow"><span class="no">#' + r.n + '</span><span class="nm">' + esc(r.name) + '<small>' + (inGb.has(r.n) ? '<a class="gl" data-go="' + claim[r.n] + '">방명록 사진확인 ›</a>' : '방명록 미작성') + '</small></span><span class="amt">' + man(r.a) + '</span>' +
     '<span class="gsel" data-n="' + r.n + '" style="display:flex;gap:4px">' + (r.g === '영범' ? '<span class="pill g-영범" style="padding:6px 8px;font-size:12px">영범</span>' : '') + GUESTS.map(g => '<button class="pill ' + (r.g === g ? 'g-' + g : 'p-skip') + '" data-g="' + g + '" style="border:0;padding:6px 8px;font-size:12px;opacity:' + (r.g === g || !r.g ? 1 : .55) + '">' + g + '</button>').join('') + '</span></div>').join('');
-  $('#p1').innerHTML = '<div class="cards">' + cards + '</div><div class="chips">' + chips + '</div>' + (list || '<div class="empty">해당하는 줄이 없어요</div>') + '';
+  $('#p1').innerHTML = '<div class="cards">' + cards + '</div><div class="chips">' + chips + '</div><div class="shr"><button id="shb">카톡·공유로 보내기</button><button id="cpb">복사</button><span id="shm"></span></div>' + (list || '<div class="empty">해당하는 줄이 없어요</div>') + '';
   $('#tot').textContent = man(shown.reduce((s, r) => s + r.a, 0)) + '원'; $('#totl').textContent = (flt === 'all' ? '전체' : flt === 'none' ? '미분류' : flt) + ' 합계';
 }
-$('#p1').addEventListener('click', e => {
+$('#p1').addEventListener('click', async e => {
+  if (e.target.closest('#cpb')) { shareMsg(await copyText(shareText()) ? '복사했어요. 카톡에 붙여넣기 하세요' : '복사하지 못했어요'); return; }
+  if (e.target.closest('#shb')) {
+    const t = shareText();
+    if (navigator.share) { try { await navigator.share({text: t}); return; } catch (err) { if (err && err.name === 'AbortError') return; } }
+    shareMsg(await copyText(t) ? '복사했어요. 카톡에 붙여넣기 하세요' : '복사하지 못했어요'); return;
+  }
   const gl = e.target.closest('.gl');
   if (gl) { e.preventDefault(); const m = /^p(\d+)e(\d+)$/.exec(gl.dataset.go); if (m) goEntry(+m[1] - 1, +m[2]); return; }
   const f = e.target.closest('[data-f]'); if (f) { flt = f.dataset.f; renderLedger(); return; }
