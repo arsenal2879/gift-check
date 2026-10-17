@@ -157,8 +157,8 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
     <div class="top-row">
       <div class="ttl"><b id="tt">방명록 1</b><span id="tt2">/ 14</span></div>
       <div class="tabs" role="tablist">
-        <button role="tab" id="tab-0" aria-selected="true">방명록</button>
         <button role="tab" id="tab-1" aria-selected="false">장부</button>
+        <button role="tab" id="tab-0" aria-selected="true">방명록</button>
         <button role="tab" id="tab-2" aria-selected="false">수정내역</button>
       </div>
     </div>
@@ -176,7 +176,7 @@ textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:
 
   <section class="view" id="v1">
     <div class="panel" id="p1"></div>
-    <div class="total"><span class="note">장부 전체 합계</span><b id="tot"></b></div>
+    <div class="total"><span class="note" id="totl">전체 합계</span><b id="tot"></b></div>
   </section>
 
   <section class="view" id="v2">
@@ -448,15 +448,15 @@ function renderLedger() {
   const buckets = {'아빠': [0, 0], '엄마': [0, 0], '영우': [0, 0], '영범': [0, 0], '': [0, 0]};
   rows.forEach(r => { buckets[r.g][0]++; buckets[r.g][1] += r.a; });
   const col = {'아빠': 'dad', '엄마': 'mom', '영우': 'yw'};
-  const cards = ['아빠','엄마','영우'].concat(buckets['영범'][0] ? ['영범'] : [], ['']).map(g => '<div class="card ' + (g ? 'g-' + g : 'p-skip') + '"><div class="l">' + (g || '미분류') + '</div><div class="c">' + buckets[g][0] + '줄</div><div class="s">' + man(buckets[g][1]) + '</div></div>').join('');
+  const cards = ['아빠','엄마','영우'].concat(buckets['영범'][0] ? ['영범'] : [], ['']).map(g => '<div class="card ' + (g ? 'g-' + g : 'p-skip') + '"><div class="l">' + (g || '미분류') + '</div><div class="c">' + buckets[g][0] + '명</div><div class="s">' + man(buckets[g][1]) + '</div></div>').join('');
   const fl = [['all','전체 ' + rows.length],['아빠','아빠'],['엄마','엄마'],['영우','영우'],['none','미분류']];
   const chips = fl.map(f => '<button data-f="' + f[0] + '" aria-pressed="' + (flt === f[0]) + '">' + f[1] + '</button>').join('');
   const shown = rows.filter(r => flt === 'all' || (flt === 'none' ? !r.g : r.g === flt));
   const inGb = new Set(Object.keys(claim).map(Number));
-  const list = shown.map(r => '<div class="lrow"><span class="no">#' + r.n + '</span><span class="nm">' + esc(r.name) + '<small>' + (inGb.has(r.n) ? '방명록에서 확인됨' : '방명록에서 못 찾음') + '</small></span><span class="amt">' + man(r.a) + '</span>' +
+  const list = shown.map(r => '<div class="lrow"><span class="no">#' + r.n + '</span><span class="nm">' + esc(r.name) + '<small>' + (inGb.has(r.n) ? '방명록 사진확인' : '방명록 미작성') + '</small></span><span class="amt">' + man(r.a) + '</span>' +
     '<span class="gsel" data-n="' + r.n + '" style="display:flex;gap:4px">' + (r.g === '영범' ? '<span class="pill g-영범" style="padding:6px 8px;font-size:12px">영범</span>' : '') + GUESTS.map(g => '<button class="pill ' + (r.g === g ? 'g-' + g : 'p-skip') + '" data-g="' + g + '" style="border:0;padding:6px 8px;font-size:12px;opacity:' + (r.g === g || !r.g ? 1 : .55) + '">' + g + '</button>').join('') + '</span></div>').join('');
   $('#p1').innerHTML = '<div class="cards">' + cards + '</div><div class="chips">' + chips + '</div>' + (list || '<div class="empty">해당하는 줄이 없어요</div>') + '';
-  $('#tot').textContent = man(rows.reduce((s, r) => s + r.a, 0)) + '원';
+  $('#tot').textContent = man(shown.reduce((s, r) => s + r.a, 0)) + '원'; $('#totl').textContent = (flt === 'all' ? '전체' : flt === 'none' ? '미분류' : flt) + ' 합계';
 }
 $('#p1').addEventListener('click', e => {
   const f = e.target.closest('[data-f]'); if (f) { flt = f.dataset.f; renderLedger(); return; }
