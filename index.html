@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><meta name="robots" content="noindex"><title>축의금 확인</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex"><title>축의금 확인</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
 <style>
 /* 모바일 한 손 조작: 방명록 1장 = 1화면, 사진 위 / 이름 리스트 아래, 이름을 누르면 장부 매칭 시트 */
 :root{
@@ -169,6 +169,9 @@ html,body{touch-action:manipulation;-webkit-text-size-adjust:100%}
 .lhead{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;flex-direction:column;gap:6px;padding:2px 0 6px;flex:none}
 .lnote{font-size:12px;color:var(--muted);line-height:1.35}
 .lnote b{color:var(--accent)}
+.ro #okb{display:none}
+.ro .gsel button{pointer-events:none;opacity:.5!important}
+.ro [data-res]{display:none}
 </style></head><body>
 
 <div id="app">
@@ -215,12 +218,12 @@ function call(fn, args, ok, fail) {
   fetch(u, {credentials: 'omit', redirect: 'follow'}).then(r => r.json()).then(j => { if (j && j.ok) { if (ok) ok(j.r); } else { if (fail) fail(new Error(j && j.e)); } }, e => { if (fail) fail(e); });
 }
 /* 사진은 구글 드라이브 폴더에서 필요할 때 불러온다 */
-const IMC = {}, IMP = {};
+const IMC = {}, IMP = {}, IMF = {};
 const imgName = (k, i) => k === 'g' ? '방명록' + String(i + 1).padStart(2, '0') : '장부' + (i + 1);
 function applyImgs() { document.querySelectorAll('img[data-gimg],img[data-limg]').forEach(im => { const k = im.dataset.gimg != null ? 'g' + im.dataset.gimg : 'l' + im.dataset.limg; if (IMC[k] && im.getAttribute('src') !== IMC[k]) im.src = IMC[k]; }); }
 function loadImg(k, i, done) {
   const key = k + i; if (IMC[key]) { if (done) done(); return; } if (IMP[key]) return; IMP[key] = 1;
-  call('getImage', [imgName(k, i)], d => { delete IMP[key]; if (d) { IMC[key] = d; applyImgs(); } if (done) done(); }, () => { delete IMP[key]; if (done) done(); setTimeout(() => loadImg(k, i), 4000); });
+  call('getImage', [imgName(k, i)], d => { delete IMP[key]; if (d) { IMC[key] = d; applyImgs(); } if (done) done(); }, () => { delete IMP[key]; IMF[key] = (IMF[key] || 0) + 1; if (done) done(); if (IMF[key] < 3) setTimeout(() => loadImg(k, i), 4000); });
 }
 let pfq = null;
 function prefetchAll() {
@@ -237,7 +240,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const man = a => (a/10).toLocaleString('ko-KR')+'만';
 const LROW = {}; D.L.forEach(r => LROW[r[0]] = r);
-const ST = {ok:['일치','p-ok'], check:['확인필요','p-check'], none:['확인필요','p-check'], skip:['확인필요','p-check']};
+const ST = {ok:['일치','p-ok'], check:['확인필요','p-check'], none:['확인필요','p-check'], skip:['제외','p-skip']};
 
 /* 상태: 수정한 이름(ov), 하객(gs), 장부 줄 번호/항목 id가 키, 확인 완료(dn) */
 let ov = {}, gs = {}, dn = {}, db = null, cur = 0, tab = 0, flt = 'all', shw = null;
@@ -257,32 +260,37 @@ const pageSum = pi => D.P[pi].entries.reduce((s, e, ei) => s + mine(pi, ei).redu
 
 /* ---- 저장: 공유 db가 있으면 같이 저장, 없으면 이 기기에만 ---- */
 function setSync(on, msg) { const s = $('#sync'); if (!s) return; s.className = 'sync' + (on ? ' on' : ''); s.querySelector('span').textContent = msg; }
+let pend = 0, failed = false, wv = 0, RO = false;
+function blocked() { if (RO) { setSync(false, '조회 전용 · 수정 기간이 끝났어요'); return true; } return false; }
 function put(coll, id, data) {
   const m = {entries: ['setName', [id, data === null ? '' : data.name]], guests: ['setGuest', [id, data === null ? '' : data.g]], done: ['setDone', [+id.slice(1), data !== null]], del: ['deleteEntry', [id]], res: ['restoreEntry', [id]]}[coll];
-  setSync(false, '저장 중…');
-  call(m[0], m[1], () => setSync(true, '시트에 저장됨'), () => setSync(false, '저장 실패 · 새로고침 후 다시 해 주세요'));
+  wv++; pend++; setSync(false, '저장 중…');
+  call(m[0], m[1], () => { pend--; if (!failed) setSync(pend === 0, pend ? '저장 중…' : '시트에 저장됨'); },
+    err => { pend--; if (err && /수정 기간/.test(String(err.message))) { RO = true; applyRO(); setSync(false, '조회 전용 · 수정 기간이 끝났어요'); } else { failed = true; setSync(false, '저장 실패 · 새로고침 후 다시 해 주세요'); } });
 }
 const clock = () => new Date().toLocaleTimeString('en-GB', {hour12: false});
 function addLog(k, id, w, a, b) { LOG.push({t: clock(), k, id, w, a, b}); }
 function setName(pi, ei, v) {
+  if (blocked()) return;
   const id = eid(pi, ei); v = v.trim(); const before = nameOf(pi, ei);
   if (!v || v === D.P[pi].entries[ei].g) { delete ov[id]; put('entries', id, null); }
   else { ov[id] = v; put('entries', id, {name: v}); }
   const after = nameOf(pi, ei); if (after !== before) addLog('이름', id, '방명록 ' + (pi + 1) + '장', before, after);
-  renderPage(pi); renderChanges();
+  renderPage(pi); renderLedger(); renderChanges();
 }
 function setGuest(pi, ei, g) { setGuestKey(gkey(pi, ei), g); renderPage(pi); }
 function guestWho(k) { if (k[0] === 'r') return '장부 #' + k.slice(1) + ' ' + LROW[k.slice(1)][1]; const m = /^xp(\d+)e(\d+)$/.exec(k); return m ? '방명록 ' + m[1] + '장 ' + nameOf(m[1] - 1, +m[2]) : k; }
 function setGuestKey(k, g) {
+  if (k === 'r3' || blocked()) return;
   const before = gs[k] || '';
   if (!g || gs[k] === g) { delete gs[k]; put('guests', k, null); }
   else { gs[k] = g; put('guests', k, {g}); }
   const after = gs[k] || ''; if (before !== after) addLog('하객', k, guestWho(k), before, after);
   renderLedger(); renderChanges();
 }
-function doDelete(pi, ei) { const id = eid(pi, ei); addLog('삭제', id, '방명록 ' + (pi + 1) + '장', nameOf(pi, ei), ''); del[id] = 1; openRw = null; put('del', id, {x: 1}); renderAll(); }
-function doRestore(id) { const m = /^p(\d+)e(\d+)$/.exec(id); delete del[id]; addLog('복원', id, '방명록 ' + m[1] + '장', nameOf(m[1] - 1, +m[2]), ''); put('res', id, {x: 1}); renderAll(); }
-function setDone(pi, v) { if (v) { dn[pi] = 1; put('done', 'p' + (pi + 1), {v: 1}); } else { delete dn[pi]; put('done', 'p' + (pi + 1), null); } drawProg(); drawFoot(); }
+function doDelete(pi, ei) { if (blocked()) return; const id = eid(pi, ei); addLog('삭제', id, '방명록 ' + (pi + 1) + '장', nameOf(pi, ei), ''); del[id] = 1; openRw = null; put('del', id, {x: 1}); renderAll(); }
+function doRestore(id) { if (blocked()) return; const m = /^p(\d+)e(\d+)$/.exec(id); delete del[id]; addLog('복원', id, '방명록 ' + m[1] + '장', nameOf(m[1] - 1, +m[2]), ''); put('res', id, {x: 1}); renderAll(); }
+function setDone(pi, v) { if (blocked()) return; if (v) { dn[pi] = 1; put('done', 'p' + (pi + 1), {v: 1}); } else { delete dn[pi]; put('done', 'p' + (pi + 1), null); } drawProg(); drawFoot(); }
 
 /* ---- 방명록 탭 ---- */
 function rowHTML(pi, ei) {
@@ -332,6 +340,7 @@ let openRw = null, swiped = false, lp = null;
 function closeRw() {}
 function closeAm() { const m = $('#am'); if (m) m.remove(); }
 function openAm(pi, ei) {
+  if (RO) return;
   closeAm(); const d = document.createElement('div'); d.id = 'am';
   d.innerHTML = '<div class="amb"><div class="amt">' + esc(nameOf(pi, ei)) + '</div><button class="ame">수정</button><button class="amd">삭제</button><button class="amc">취소</button></div>';
   document.body.appendChild(d);
@@ -439,18 +448,20 @@ function openSheet(pi, ei) {
   $('#sheet').innerHTML = '<div class="in"><div class="grab"></div>' +
     '<div class="sh-top"><span class="pill ' + stl[1] + '">' + stl[0] + '</span><button class="x" id="sx" aria-label="닫기">✕</button></div>' +
     match + (e.note ? '<div class="note">' + esc(e.note) + '</div>' : '') + crops +
-    '<div><div class="lab">이름이 다르면 수정 <span>(금액은 수정 불가)</span></div><div class="inrow"><input id="ni" value="' + esc(n) + '" enterkeyhint="done" autocomplete="off"><button class="btn" id="ns">저장</button></div></div>' +
+    '<div><div class="lab">이름이 다르면 수정 <span>(금액은 수정 불가)</span></div><div class="inrow"><input id="ni" maxlength="40" value="' + esc(n) + '" enterkeyhint="done" autocomplete="off"><button class="btn" id="ns">저장</button></div></div>' +
     '<div><div class="lab">누구 하객이에요? <span>(다시 누르면 해제)</span></div><div class="gbtns" id="gb"></div></div>' +
     '<div class="fine" id="fn"></div></div>';
   $('#sheet').querySelectorAll('img[data-limg]').forEach(i => loadImg('l', +i.dataset.limg)); applyImgs();
   drawGuestBtns(); drawFine();
   $('#scrim').style.display = 'block'; $('#sheet').style.display = 'block'; $('#sheet').scrollTop = 0;
   $('#sx').onclick = closeSheet;
+  if (RO) { $('#ni').readOnly = true; $('#ns').style.display = 'none'; $('#gb').style.pointerEvents = 'none'; $('#gb').style.opacity = .5; }
   $('#ns').onclick = () => { setName(pi, ei, $('#ni').value); closeSheet(); };
   $('#ni').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('#ns').click(); });
 }
 function drawGuestBtns() {
   if (!shw) return; const g = guestOf(shw[0], shw[1]);
+  if (gkey(shw[0], shw[1]) === 'r3') { $('#gb').innerHTML = '<span class="pill g-영범" style="padding:10px 16px">영범 (고정 · 변경 불가)</span>'; $('#gb').onclick = null; return; }
   $('#gb').innerHTML = GUESTS.map(x => '<button class="g-' + x + '" aria-pressed="' + (g === x) + '" data-g="' + x + '">' + x + '</button>').join('');
   $('#gb').onclick = ev => { const b = ev.target.closest('button'); if (!b) return; setGuest(shw[0], shw[1], b.dataset.g); drawGuestBtns(); };
 }
@@ -465,10 +476,18 @@ function goEntry(pi, ei) {
   const row = document.querySelector('#pg' + pi + ' .row[data-e="' + ei + '"]');
   if (row) { row.scrollIntoView({block: 'center'}); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
 }
+function ledNames() {
+  const cnt = {}, who = {};
+  D.P.forEach((p, pi) => p.entries.forEach((e, ei) => { if (del[eid(pi, ei)]) return; e.l.forEach(n => { cnt[n] = (cnt[n] || 0) + 1; who[n] = [pi, ei]; }); }));
+  const o = {};
+  D.L.forEach(r => { const n = r[0], w = who[n]; o[n] = r[1]; if (cnt[n] === 1) { const e = D.P[w[0]].entries[w[1]], id = eid(w[0], w[1]); if (e.l.length === 1 && ov[id]) o[n] = ov[id]; } });
+  return o;
+}
 function shareText() {
-  const rows = D.L.map(r => ({n: r[0], name: r[1], a: r[2], m: r[3], g: gs['r' + r[0]] || ''})).filter(r => flt === 'all' || (flt === 'none' ? !r.g : r.g === flt));
+  const LN = ledNames();
+  const rows = D.L.map(r => ({n: r[0], name: LN[r[0]], a: r[2], m: r[3], g: gs['r' + r[0]] || ''})).filter(r => flt === 'all' || (flt === 'none' ? !r.g : r.g === flt));
   const lab = flt === 'all' ? '전체' : flt === 'none' ? '미분류' : flt;
-  return '[축의금 ' + lab + ' 하객 ' + rows.length + '명 · 합계 ' + man(rows.reduce((s, r) => s + r.a, 0)) + '원]\n' + rows.map(r => r.name + (r.m ? '(' + r.m + ')' : '') + ' ' + man(r.a)).join('\n');
+  return '[축의금 ' + lab + ' 하객 ' + rows.length + '건 · 합계 ' + man(rows.reduce((s, r) => s + r.a, 0)) + '원]\n' + rows.map(r => r.name + (r.m ? '(' + r.m + ')' : '') + ' ' + man(r.a)).join('\n');
 }
 function shareMsg(m) { const e = $('#shm'); if (e) { e.textContent = m; setTimeout(() => { if (e.textContent === m) e.textContent = ''; }, 2500); } }
 async function copyText(t) {
@@ -476,11 +495,12 @@ async function copyText(t) {
   try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
 }
 function renderLedger() {
-  const rows = D.L.map(r => ({n: r[0], name: r[1], a: r[2], g: gs['r' + r[0]] || ''}));
+  const LN = ledNames();
+  const rows = D.L.map(r => ({n: r[0], name: LN[r[0]], a: r[2], g: gs['r' + r[0]] || ''}));
   const buckets = {'아빠': [0, 0], '엄마': [0, 0], '영우': [0, 0], '영범': [0, 0], '': [0, 0]};
-  rows.forEach(r => { buckets[r.g][0]++; buckets[r.g][1] += r.a; });
+  rows.forEach(r => { const b = buckets[r.g] || buckets['']; b[0]++; b[1] += r.a; });
   const col = {'아빠': 'dad', '엄마': 'mom', '영우': 'yw'};
-  const cards = ['아빠','엄마','영우'].concat(buckets['영범'][0] ? ['영범'] : [], ['']).map(g => '<div class="card ' + (g ? 'g-' + g : 'p-skip') + '"><div class="l">' + (g || '미분류') + '</div><div class="c">' + buckets[g][0] + '명</div><div class="s">' + man(buckets[g][1]) + '</div></div>').join('');
+  const cards = ['아빠','엄마','영우'].concat(buckets['영범'][0] ? ['영범'] : [], ['']).map(g => '<div class="card ' + (g ? 'g-' + g : 'p-skip') + '"><div class="l">' + (g || '미분류') + '</div><div class="c">' + buckets[g][0] + '건</div><div class="s">' + man(buckets[g][1]) + '</div></div>').join('');
   const fl = [['all','전체 ' + rows.length],['아빠','아빠'],['엄마','엄마'],['영우','영우'],['none','미분류']];
   const chips = fl.map(f => '<button data-f="' + f[0] + '" aria-pressed="' + (flt === f[0]) + '">' + f[1] + '</button>').join('');
   const shown = rows.filter(r => flt === 'all' || (flt === 'none' ? !r.g : r.g === flt));
@@ -536,12 +556,18 @@ $('#cpTop').onclick = async () => { const b = $('#cpTop'), ok = await copyText(s
 buildPages(); renderAll(); showTab(1);
 
 /* 구글 시트에서 현재 상태를 불러오고, 15초마다 다른 가족의 수정을 가져온다 */
+function cleanGs(g) { const o = {}; Object.keys(g || {}).forEach(k => { const v = String(g[k] == null ? '' : g[k]).trim(); if (v === '아빠' || v === '엄마' || v === '영우' || v === '영범') o[k] = v; }); return o; }
+function applyRO() { document.body.classList.toggle('ro', RO); }
 function pull(first) {
+  const v0 = wv;
   call('getState', [], st => {
     if (!st) return;
+    if (pend > 0 || failed || v0 !== wv) return;
     if (!first && (shw || openRw || (document.activeElement && document.activeElement.id === 'ni'))) return;
-    ov = st.ov || {}; gs = st.gs || {}; dn = st.dn || {}; del = st.del || {}; LOG = st.log || []; renderAll(); setSync(true, '구글 시트와 연결됨');
-  }, () => setSync(false, '시트 연결 실패 · 새로고침해 주세요'));
+    ov = st.ov || {}; gs = cleanGs(st.gs); dn = st.dn || {}; del = st.del || {}; LOG = st.log || [];
+    RO = !!st.ro || (st.until > 0 && Date.now() >= st.until); applyRO();
+    renderAll(); setSync(!RO, RO ? '조회 전용 · 수정 기간이 끝났어요' : '구글 시트와 연결됨');
+  }, () => { if (!failed && !pend) setSync(false, '시트 연결 실패 · 새로고침해 주세요'); });
 }
 setSync(false, '시트 연결 중…'); pull(true); setInterval(() => pull(false), 15000);
 </script>
